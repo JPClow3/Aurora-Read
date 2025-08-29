@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aurora Read</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.1.5/dist/jszip.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Lexend:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+      // Configure the PDF.js worker
+      if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.15.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.417.0"
+  }
+}
+</script>
+<style>
+  /* High Contrast Theme */
+  .high-contrast {
+    --hc-bg: #000000;
+    --hc-text: #FFFFFF;
+    --hc-accent: #FFFF00;
+    --hc-accent-text: #000000;
+    --hc-border: #FFFFFF;
+    --hc-dim-text: #CCCCCC;
+  }
+  .high-contrast body, .high-contrast .hc-bg {
+    background-color: var(--hc-bg) !important;
+    color: var(--hc-text) !important;
+  }
+  .high-contrast .hc-text { color: var(--hc-text) !important; }
+  .high-contrast .hc-dim-text { color: var(--hc-dim-text) !important; }
+  .high-contrast .hc-border { border-color: var(--hc-border) !important; }
+  .high-contrast .hc-accent-bg { background-color: var(--hc-accent) !important; }
+  .high-contrast .hc-accent-text { color: var(--hc-accent-text) !important; }
+  .high-contrast .hc-accent-border { border-color: var(--hc-accent) !important; }
+  .high-contrast .hc-accent-fill { fill: var(--hc-accent) !important; }
+  .high-contrast .hc-accent-stroke { stroke: var(--hc-accent) !important; }
+  .high-contrast input, .high-contrast select, .high-contrast button {
+    background-color: var(--hc-bg) !important;
+    color: var(--hc-text) !important;
+    border: 1px solid var(--hc-border) !important;
+  }
+  .high-contrast button.hc-primary {
+     background-color: var(--hc-accent) !important;
+     color: var(--hc-accent-text) !important;
+     border-color: var(--hc-accent) !important;
+  }
+  .high-contrast ::-webkit-slider-thumb {
+    background: var(--hc-accent) !important;
+  }
+  .high-contrast ::-moz-range-thumb {
+    background: var(--hc-accent) !important;
+  }
+
+  /* Custom Animations & Base Styles */
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes subtlePulse {
+    0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5); }
+    70% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+  }
+
+  /* Key for 3D transforms */
+  .perspective-1000 { perspective: 1000px; }
+  .preserve-3d { transform-style: preserve-3d; }
+  .backface-hidden { backface-visibility: hidden; }
+  .rotate-y-180 { transform: rotateY(180deg); }
+
+  .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+  .animate-slide-up { animation: slideUp 0.3s ease-out forwards; opacity: 0; }
+  .animate-pulse-preview { animation: subtlePulse 1.5s infinite; }
+
+  /* Reader View Themes */
+  .reader-view {
+    --reader-bg: #111827; /* dark theme default */
+    --reader-text: #D1D5DB;
+    --reader-highlight-text: #FFFFFF;
+  }
+  .reader-view[data-theme="light"] {
+    --reader-bg: #FFFFFF;
+    --reader-text: #1F2937;
+    --reader-highlight-text: #000000;
+  }
+  .reader-view[data-theme="sepia"] {
+    --reader-bg: #FBF0D9;
+    --reader-text: #5B4636;
+    --reader-highlight-text: #000000;
+  }
+  .reader-view[data-theme="grey"] {
+    --reader-bg: #4B5563;
+    --reader-text: #F3F4F6;
+    --reader-highlight-text: #FFFFFF;
+  }
+
+  /* Reader View Typography */
+  .reader-view[data-font="sans"] { --font-family: 'Inter', sans-serif; }
+  .reader-view[data-font="serif"] { --font-family: 'Lora', serif; }
+  .reader-view[data-font="dyslexic"] { --font-family: 'Lexend', sans-serif; }
+
+  .reader-content {
+    background-color: var(--reader-bg);
+    color: var(--reader-text);
+    font-family: var(--font-family);
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+</style>
+</head>
+  <body class="bg-gray-900 text-gray-100 font-['Inter',_sans-serif]">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
