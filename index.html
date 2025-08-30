@@ -1,3 +1,15 @@
+<script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.542.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.16.0",
+    "epubjs": "https://aistudiocdn.com/epubjs@^0.3.93"
+  }
+}
+</script>
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -6,128 +18,148 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Aurora Read</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.1.5/dist/jszip.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,700;1,400&family=Lexend:wght@400;700&display=swap" rel="stylesheet">
-    <script>
-      // Configure the PDF.js worker
-      if (typeof pdfjsLib !== 'undefined') {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    <style>
+      body, html, #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background-color: #111827; /* bg-gray-900 */
+        font-family: 'Inter', sans-serif;
       }
-    </script>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.1.1/",
-    "react": "https://aistudiocdn.com/react@^19.1.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.15.0",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.417.0"
-  }
-}
-</script>
-<style>
-  /* High Contrast Theme */
-  .high-contrast {
-    --hc-bg: #000000;
-    --hc-text: #FFFFFF;
-    --hc-accent: #FFFF00;
-    --hc-accent-text: #000000;
-    --hc-border: #FFFFFF;
-    --hc-dim-text: #CCCCCC;
-  }
-  .high-contrast body, .high-contrast .hc-bg {
-    background-color: var(--hc-bg) !important;
-    color: var(--hc-text) !important;
-  }
-  .high-contrast .hc-text { color: var(--hc-text) !important; }
-  .high-contrast .hc-dim-text { color: var(--hc-dim-text) !important; }
-  .high-contrast .hc-border { border-color: var(--hc-border) !important; }
-  .high-contrast .hc-accent-bg { background-color: var(--hc-accent) !important; }
-  .high-contrast .hc-accent-text { color: var(--hc-accent-text) !important; }
-  .high-contrast .hc-accent-border { border-color: var(--hc-accent) !important; }
-  .high-contrast .hc-accent-fill { fill: var(--hc-accent) !important; }
-  .high-contrast .hc-accent-stroke { stroke: var(--hc-accent) !important; }
-  .high-contrast input, .high-contrast select, .high-contrast button {
-    background-color: var(--hc-bg) !important;
-    color: var(--hc-text) !important;
-    border: 1px solid var(--hc-border) !important;
-  }
-  .high-contrast button.hc-primary {
-     background-color: var(--hc-accent) !important;
-     color: var(--hc-accent-text) !important;
-     border-color: var(--hc-accent) !important;
-  }
-  .high-contrast ::-webkit-slider-thumb {
-    background: var(--hc-accent) !important;
-  }
-  .high-contrast ::-moz-range-thumb {
-    background: var(--hc-accent) !important;
-  }
 
-  /* Custom Animations & Base Styles */
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes slideUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes subtlePulse {
-    0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5); }
-    70% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
-  }
+      /* High Contrast Mode accessibility */
+      @media (forced-colors: active) {
+          .hc-bg { background-color: Window !important; }
+          .hc-border { border-color: WindowText !important; }
+          .hc-text { color: WindowText !important; }
+          .hc-dim-text { color: GrayText !important; }
+          .hc-accent-text { color: LinkText !important; }
+          .hc-accent-border { border-color: LinkText !important; }
+          .hc-accent-bg { background-color: LinkText !important; }
+          .hc-primary { background-color: ButtonFace !important; color: ButtonText !important; border: 1px solid ButtonText !important; }
+      }
 
-  /* Key for 3D transforms */
-  .perspective-1000 { perspective: 1000px; }
-  .preserve-3d { transform-style: preserve-3d; }
-  .backface-hidden { backface-visibility: hidden; }
-  .rotate-y-180 { transform: rotateY(180deg); }
+      /* Animations */
+      .animate-fade-in { animation: fadeIn 0.5s ease-in-out; }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      .animate-slide-up { animation: slideUp 0.4s ease-out; }
+      @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 
-  .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
-  .animate-slide-up { animation: slideUp 0.3s ease-out forwards; opacity: 0; }
-  .animate-pulse-preview { animation: subtlePulse 1.5s infinite; }
+      /* Reader view theme variables */
+      .reader-view[data-theme='light'] {
+        --reader-bg: #fdf6e3;
+        --reader-text: #586e75;
+        --reader-highlight-bg: #b58900;
+        --reader-highlight-text: #fdf6e3;
+      }
+      .reader-view[data-theme='dark'] {
+        --reader-bg: #1f2937;
+        --reader-text: #d1d5db;
+        --reader-highlight-bg: #60a5fa;
+        --reader-highlight-text: #111827;
+      }
+      .reader-view[data-theme='sepia'] {
+        --reader-bg: #f4e9db;
+        --reader-text: #5b4636;
+        --reader-highlight-bg: #d97706;
+        --reader-highlight-text: #f4e9db;
+      }
+      .reader-view[data-theme='grey'] {
+        --reader-bg: #374151;
+        --reader-text: #e5e7eb;
+        --reader-highlight-bg: #818cf8;
+        --reader-highlight-text: #1f2937;
+      }
+      .reader-view .reader-content, .book-page {
+        background-color: var(--reader-bg);
+        color: var(--reader-text);
+      }
+      .reader-view[data-font='serif'] { --font-family: 'Lora', serif; }
+      .reader-view[data-font='sans'] { --font-family: 'Inter', sans-serif; }
+      .reader-view[data-font='dyslexic'] { --font-family: 'OpenDyslexic', sans-serif; }
 
-  /* Reader View Themes */
-  .reader-view {
-    --reader-bg: #111827; /* dark theme default */
-    --reader-text: #D1D5DB;
-    --reader-highlight-text: #FFFFFF;
-  }
-  .reader-view[data-theme="light"] {
-    --reader-bg: #FFFFFF;
-    --reader-text: #1F2937;
-    --reader-highlight-text: #000000;
-  }
-  .reader-view[data-theme="sepia"] {
-    --reader-bg: #FBF0D9;
-    --reader-text: #5B4636;
-    --reader-highlight-text: #000000;
-  }
-  .reader-view[data-theme="grey"] {
-    --reader-bg: #4B5563;
-    --reader-text: #F3F4F6;
-    --reader-highlight-text: #FFFFFF;
-  }
+      /* AI highlights */
+      .highlight-plot { background-color: rgba(239, 68, 68, 0.3); }
+      .highlight-character { background-color: rgba(59, 130, 246, 0.3); }
+      .highlight-foreshadowing { background-color: rgba(168, 85, 247, 0.3); }
 
-  /* Reader View Typography */
-  .reader-view[data-font="sans"] { --font-family: 'Inter', sans-serif; }
-  .reader-view[data-font="serif"] { --font-family: 'Lora', serif; }
-  .reader-view[data-font="dyslexic"] { --font-family: 'Lexend', sans-serif; }
-
-  .reader-content {
-    background-color: var(--reader-bg);
-    color: var(--reader-text);
-    font-family: var(--font-family);
-    transition: background-color 0.3s ease, color 0.3s ease;
-  }
-</style>
+      /* Paper simulation styles */
+      .book-viewport {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        background: #374151; /* gray-700 */
+      }
+      .book {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        max-width: 1200px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        perspective: 2500px;
+      }
+      .book-page {
+        position: relative;
+        padding: 2.5rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .paper-texture::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEWFhYWDg4N3d3dtbW17e3t1dXVדהVJSUnLy8vR0dHPz8/6+vrx8fH+/v7t7e3d3d2Tk5Ktra2rq6uZmZlLSkp7e3t3d3dycnKOjo5sbGxtbW1pPTA0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH4QIJBzcsRY7d/gAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAABGklEQVRIx+3Wy7JCQBAF0KGBbux2W3e2te3/v+xWC4gx7S0s7dchONM0T5/IAQzMEgDMMgDMMgDMMgDMMgDMMgDMMgDMMgDMMgDMMgDMMgDMMgDMMgD/E8uQ9bDi9255GfNbyLSOd93l/Sj7f+v7QywyqBC4l2jKzI5Qo6M9M5u0qE5Q0c9uF8vgnjthkY5KIvV2Fz+E6f+dQV/VASYjfxL5v3fKOFJbWM6w5wX8if2pGvBefoia/W/kGgGylvj8dTTx7AB39s20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w20w2fCvEAZ2I8d9f5/d+C5L7P9v3/AAHsx0cABsMAAAAASUVORK5CYII=);
+        opacity: 0.08;
+        pointer-events: none;
+        mix-blend-mode: multiply;
+      }
+      .book-page--content {
+        height: 100%;
+        overflow-y: auto; /* for scroll mode within a page */
+      }
+      .flipper {
+        position: absolute;
+        top: 0;
+        left: 50%;
+        width: 50%;
+        height: 100%;
+        transform-origin: left center;
+        transform-style: preserve-3d;
+        transition: transform 0.8s cubic-bezier(0.1, 0.5, 0.2, 1);
+        cursor: pointer;
+      }
+      .flipper.turning {
+        transform: rotateY(-180deg);
+      }
+      .flipper__face {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+      }
+      .flipper__face--back {
+        transform: rotateY(180deg);
+      }
+      
+      /* 3D perspective for card flip (used in Flashcards) */
+      .perspective-1000 { perspective: 1000px; }
+      .preserve-3d { transform-style: preserve-3d; }
+      .rotate-y-180 { transform: rotateY(180deg); }
+      .backface-hidden { backface-visibility: hidden; }
+    </style>
+  <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-gray-900 text-gray-100 font-['Inter',_sans-serif]">
+  <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

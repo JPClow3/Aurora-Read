@@ -15,16 +15,23 @@ const AnnotationMenu: React.FC<AnnotationMenuProps> = ({ target, annotation, onU
   const [note, setNote] = useState(annotation?.note || '');
   const [selectedColor, setSelectedColor] = useState(annotation?.color || ANNOTATION_COLORS[0]);
   const menuRef = useRef<HTMLDivElement>(null);
+  
+  const handleNoteSave = () => {
+    onUpdate(selectedColor, note || undefined);
+  };
 
   useEffect(() => {
+    // FIX: Save the note before closing the menu when clicking outside. This prevents data loss
+    // if the onBlur event doesn't fire before the component unmounts.
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        handleNoteSave();
         onClose();
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose]);
+  }, [onClose, note, selectedColor]);
 
   useEffect(() => {
     // Auto-save color change
@@ -35,10 +42,6 @@ const AnnotationMenu: React.FC<AnnotationMenuProps> = ({ target, annotation, onU
 
   const handleNoteChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNote(e.target.value);
-  };
-  
-  const handleNoteSave = () => {
-    onUpdate(selectedColor, note || undefined);
   };
 
   const handleDelete = () => {

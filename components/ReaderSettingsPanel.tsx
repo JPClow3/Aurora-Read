@@ -15,8 +15,19 @@ const ReaderSettingsPanel: React.FC<{ settings: ReaderSettings, onSettingsChange
                 ))}
             </div>
              {settings.mode === 'karaoke' && <p className="text-xs text-gray-400 mt-1">Reading style is locked during Karaoke mode. Change the main View Mode to enable other styles.</p>}
+            <div className="flex items-center justify-between sm:col-span-2 mt-4">
+                <label htmlFor="paperSimulation" className={`text-sm ${settings.mode !== 'page' ? 'text-gray-500' : 'text-gray-400'}`}>Paper Simulation</label>
+                <input 
+                    type="checkbox" 
+                    id="paperSimulation" 
+                    checked={settings.paperSimulation} 
+                    onChange={e => onSettingsChange({...settings, paperSimulation: e.target.checked})} 
+                    className="w-5 h-5 rounded text-indigo-500 bg-gray-600 border-gray-500 focus:ring-indigo-500 disabled:opacity-50"
+                    disabled={settings.mode !== 'page'}
+                />
+            </div>
         </div>
-        {settings.mode === 'page' && (
+        {settings.mode === 'page' && !settings.paperSimulation && (
             <div>
                 <label htmlFor="pageTurnAnimation" className="text-base font-medium text-gray-300">Page Turn Animation</label>
                 <select id="pageTurnAnimation" value={settings.pageTurnAnimation} onChange={e => onSettingsChange({...settings, pageTurnAnimation: e.target.value as PageTurnAnimation})} className="w-full mt-2 bg-gray-700 text-white text-base rounded-md p-2 border border-gray-600 focus:ring-1 focus:ring-indigo-500 focus:outline-none">
@@ -58,6 +69,10 @@ const ReaderSettingsPanel: React.FC<{ settings: ReaderSettings, onSettingsChange
                 <div>
                     <label htmlFor="margin" className="block text-sm text-gray-400">Margins: {settings.margin.toFixed(1)}rem</label>
                     <input id="margin" type="range" min="0.5" max="5.0" step="0.5" value={settings.margin} onChange={e => onSettingsChange({...settings, margin: parseFloat(e.target.value)})} className="w-full h-2 mt-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-indigo-500 hc-accent-bg"/>
+                </div>
+                <div className="flex items-center justify-between sm:col-span-2">
+                    <label htmlFor="bionicReading" className="text-sm text-gray-400">Bionic Reading</label>
+                    <input type="checkbox" id="bionicReading" checked={settings.bionicReading} onChange={e => onSettingsChange({...settings, bionicReading: e.target.checked})} className="w-5 h-5 rounded text-indigo-500 bg-gray-600 border-gray-500 focus:ring-indigo-500" />
                 </div>
             </div>
         </div>

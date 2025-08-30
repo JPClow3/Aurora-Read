@@ -88,8 +88,8 @@ export const getBooksForProfile = async (profileId: string, defaultSettings: { d
     });
     
     // FIX: Refactored the data merging logic to be more robust. This new approach prevents
-    // a subtle bug where essential properties from `coreBook` (like 'cover' and 'chapters') could be
-    // overwritten or lost, leading to invisible book covers and player crashes.
+    // a subtle bug where essential properties from `coreBook` (like 'cover', 'chapters', and 'id')
+    // could be overwritten or lost, leading to invisible book covers and player crashes.
     return coreBooks.map(coreBook => {
         const userData = userBookDataMap.get(coreBook.id);
         const defaultUserData = {
@@ -102,18 +102,19 @@ export const getBooksForProfile = async (profileId: string, defaultSettings: { d
             readerSettings: defaultSettings.defaultReaderSettings,
             lastChapterIndex: 0,
             lastSentenceIndex: 0,
+            flashcards: [],
+            flashcardReviews: {},
         };
         
         // Safely merge user-specific data over the defaults.
-        // This ensures that even if `userData` is missing some fields, the defaults will apply.
         const finalUserData = { ...defaultUserData, ...userData };
 
         // Destructure the problematic compound 'id' from the user data so it doesn't
         // overwrite the correct string 'id' from the core book data.
-        const { id, ...userDataWithoutId } = finalUserData;
+        const { id: _, ...userDataWithoutId } = finalUserData;
 
         // Combine the core book data with the final, clean user data.
-        // The spread order ensures `coreBook` properties (like 'id', 'cover', 'chapters') are preserved.
+        // The spread order is critical: it ensures `coreBook` properties (like 'id', 'cover', 'chapters') are preserved.
         return { ...coreBook, ...userDataWithoutId };
     });
 };
@@ -122,7 +123,8 @@ export const updateBook = (book: Book, profileId: string): Promise<Book> => {
     return new Promise((resolve, reject) => {
         const {
             voice, rate, lastPlayed, readerSettings, bookmarks, annotations,
-            progress, totalListenTime, finishedAt, rating, lastChapterIndex, lastSentenceIndex, ...coreBookData
+            progress, totalListenTime, finishedAt, rating, lastChapterIndex, lastSentenceIndex,
+            flashcards, flashcardReviews, ...coreBookData
         } = book;
         
         const userBookData: UserBookData = {
@@ -130,7 +132,8 @@ export const updateBook = (book: Book, profileId: string): Promise<Book> => {
             profileId,
             bookId: book.id,
             voice, rate, lastPlayed, readerSettings, bookmarks, annotations,
-            progress, totalListenTime, finishedAt, rating, lastChapterIndex, lastSentenceIndex
+            progress, totalListenTime, finishedAt, rating, lastChapterIndex, lastSentenceIndex,
+            flashcards, flashcardReviews
         };
         
         const transaction = db.transaction([BOOK_STORE, USER_DATA_STORE], 'readwrite');

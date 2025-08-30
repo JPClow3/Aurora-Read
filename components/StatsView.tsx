@@ -45,6 +45,8 @@ const StatsView: React.FC<StatsViewProps> = ({ library, appSettings }) => {
     const favoriteGenre = Object.keys(genreCounts).reduce((a, b) => genreCounts[a] > genreCounts[b] ? a : b, 'N/A');
 
     // Reading Streak
+    // FIX: Corrected streak calculation. A streak must be consecutive days ending today.
+    // The previous logic could incorrectly count a streak if today was missed.
     let currentStreak = 0;
     const today = new Date();
     let currentDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -55,12 +57,7 @@ const StatsView: React.FC<StatsViewProps> = ({ library, appSettings }) => {
             currentStreak++;
             currentDate.setDate(currentDate.getDate() - 1);
         } else {
-            // If streak is 0, check yesterday as well for a "yesterday" streak
-            if (currentStreak === 0 && currentDate.getTime() === today.getTime()) {
-                 currentDate.setDate(currentDate.getDate() - 1);
-                 continue;
-            }
-            break;
+            break; // Streak is broken if a day is missed.
         }
     }
     

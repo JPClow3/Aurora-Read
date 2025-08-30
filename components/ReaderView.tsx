@@ -1,273 +1,333 @@
-
 import React, { useMemo, useRef, useEffect, useState, useCallback } from 'react';
-import { Chapter, ReaderSettings, Annotation } from '../types';
+import ePub, { Rendition } from 'epubjs';
+import { Book, ReaderSettings, ViewMode, AiHighlight, Theme } from '../types';
 import { splitSentences } from '../utils';
-import { ChevronLeftIcon, ChevronRightIcon, MessageSquareIcon, PaletteIcon } from './Icons';
+import PaperImperfections from './PaperImperfections';
 
 interface ReaderViewProps {
-  chapter: Chapter;
+  book: Book;
+  currentChapterIndex: number;
   currentSentenceIndex: number;
   onSentenceClick: (index: number) => void;
   settings: ReaderSettings;
-  actions?: React.ReactNode;
-  headerInfo?: React.ReactNode;
-  jumpRequest?: { type: 'page' | 'percent'; value: number; id: number } | null;
-  onPaginationUpdate?: (info: { currentPage: number; totalPages: number }) => void;
-  annotations: Annotation[];
-  onSentenceAction: (index: number, target: HTMLElement) => void;
+  viewMode: ViewMode;
+  aiHighlights: AiHighlight[];
 }
 
 const ReaderView: React.FC<ReaderViewProps> = ({
-  chapter,
+  book,
+  currentChapterIndex,
   currentSentenceIndex,
   onSentenceClick,
   settings,
-  actions,
-  headerInfo,
-  jumpRequest,
-  onPaginationUpdate,
-  annotations,
-  onSentenceAction,
+  viewMode,
+  aiHighlights
 }) => {
-  const sentences = useMemo(() => splitSentences(chapter.content), [chapter.content]);
+  const chapter = book.chapters?.[currentChapterIndex];
+  
+  // --- Text-based Rendering Logic ---
+  const sentences = useMemo(() => {
+    const content = chapter?.content || '';
+    if (book.fileType === 'epub') {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = content;
+        // Add newlines for block elements to preserve paragraph structure
+        tempDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div, blockquote, li, br').forEach(el => {
+            el.insertAdjacentHTML('afterend', '\n');
+        });
+        return splitSentences(tempDiv.textContent || '');
+    }
+    return splitSentences(content);
+  }, [chapter, book.fileType]);
+
+
   const activeSentenceRef = useRef<HTMLElement>(null);
   const readerContentRef = useRef<HTMLDivElement>(null);
-  const paginatedContentRef = useRef<HTMLDivElement>(null);
-
-  const [pagination, setPagination] = useState({ currentPage: 0, totalPages: 0, sentenceToPageMap: new Map<number, number>() });
-  const [isHovering, setIsHovering] = useState(false);
-  const pageTurnBehavior = settings.pageTurnAnimation === 'scroll' ? 'auto' : 'smooth';
-
-  const calculatePages = useCallback(() => {
-    const container = paginatedContentRef.current;
-    if (!container || settings.mode !== 'page' || container.clientWidth === 0) {
-      if (pagination.totalPages > 0) setPagination(p => ({ ...p, totalPages: 0}));
-      return;
-    };
-
-    const totalPages = Math.max(1, Math.round(container.scrollWidth / container.clientWidth));
-    const newSentenceToPageMap = new Map<number, number>();
-
-    const sentenceElements = container.querySelectorAll('span[data-sentence-index]');
-    sentenceElements.forEach(el => {
-      const sentenceIndex = parseInt(el.getAttribute('data-sentence-index')!, 10);
-      const sentencePage = Math.floor((el as HTMLElement).offsetLeft / container.clientWidth);
-      newSentenceToPageMap.set(sentenceIndex, sentencePage);
-    });
-    
-    // Prevent infinite loops by checking for actual changes
-    if (totalPages !== pagination.totalPages || newSentenceToPageMap.size !== pagination.sentenceToPageMap.size) {
-        setPagination(p => ({ ...p, totalPages, sentenceToPageMap: newSentenceToPageMap }));
-    }
-  }, [settings.mode, pagination.totalPages, pagination.sentenceToPageMap]);
-
-  useEffect(() => {
-    const debounceTimeout = setTimeout(() => calculatePages(), 100);
-    const observer = new ResizeObserver(() => calculatePages());
-    if (readerContentRef.current) observer.observe(readerContentRef.current);
-
-    return () => {
-      clearTimeout(debounceTimeout);
-      observer.disconnect();
-    };
-  }, [calculatePages, chapter.content, settings]);
+  const [pages, setPages] = useState<React.ReactNode[]>([]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [isTurning, setIsTurning] = useState(false);
   
-  useEffect(() => {
-    if (onPaginationUpdate) {
-        onPaginationUpdate({ currentPage: pagination.currentPage, totalPages: pagination.totalPages });
+  const pageContainerRef = useRef<HTMLDivElement>(null);
+
+  const highlightClasses = useMemo(() => {
+    const classes = new Map<number, string>();
+    if (aiHighlights) {
+        for (const highlight of aiHighlights) {
+            classes.set(highlight.sentenceIndex, `highlight-${highlight.category}`);
+        }
     }
-  }, [pagination.currentPage, pagination.totalPages, onPaginationUpdate]);
+    return classes;
+  }, [aiHighlights]);
+
+  const paginateContent = useCallback(() => {
+    if (!pageContainerRef.current) return;
+    
+    const container = pageContainerRef.current;
+    const computedStyle = getComputedStyle(container);
+    const containerWidth = container.clientWidth - parseFloat(computedStyle.paddingLeft) - parseFloat(computedStyle.paddingRight);
+    const containerHeight = container.clientHeight - parseFloat(computedStyle.paddingTop) - parseFloat(computedStyle.paddingBottom);
+
+    if (containerWidth <= 0 || containerHeight <= 0) return;
+
+    const measurer = document.createElement('div');
+    measurer.style.position = 'absolute';
+    measurer.style.left = '-9999px';
+    measurer.style.visibility = 'hidden';
+    measurer.style.width = `${containerWidth}px`;
+    measurer.style.height = `${containerHeight}px`;
+    measurer.style.font = computedStyle.font;
+    measurer.style.lineHeight = computedStyle.lineHeight;
+    document.body.appendChild(measurer);
+
+    const generatedPages: React.ReactNode[] = [];
+    let currentPageNodes: React.ReactNode[] = [];
+
+    sentences.forEach((sentence, index) => {
+        const sentenceSpan = <span key={`paginator-${index}`}>{sentence}{' '}</span>;
+        measurer.innerHTML += sentence + ' ';
+        
+        if (measurer.scrollHeight > containerHeight) {
+            generatedPages.push(<>{currentPageNodes}</>);
+            measurer.innerHTML = sentence + ' ';
+            currentPageNodes = [sentenceSpan];
+        } else {
+            currentPageNodes.push(sentenceSpan);
+        }
+    });
+
+    if (currentPageNodes.length > 0) {
+        generatedPages.push(<>{currentPageNodes}</>);
+    }
+
+    document.body.removeChild(measurer);
+    setPages(generatedPages);
+    setCurrentPageIndex(0);
+
+  }, [sentences, settings.fontSize, settings.fontFamily, settings.lineHeight]);
+  
+  // Debounce pagination for text files
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (book.fileType === 'txt' && viewMode === 'reading' && settings.mode === 'page' && settings.paperSimulation) {
+        paginateContent();
+      }
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [paginateContent, book.fileType, viewMode, settings.mode, settings.paperSimulation]);
 
   useEffect(() => {
-    if (settings.mode === 'page') {
-      const targetPage = pagination.sentenceToPageMap.get(currentSentenceIndex);
-      if (targetPage !== undefined && targetPage !== pagination.currentPage) {
-        paginatedContentRef.current?.scrollTo({ left: targetPage * paginatedContentRef.current.clientWidth, behavior: pageTurnBehavior });
-      }
-    } else if (settings.mode === 'scroll' && settings.autoScroll) {
+    const isTextMode = book.fileType === 'txt' || viewMode === 'karaoke' || viewMode === 'hybrid';
+    if (isTextMode) {
       activeSentenceRef.current?.scrollIntoView({ 
           behavior: 'smooth', 
-          block: settings.autoScrollAlignment === 'top' ? 'start' : 'center' 
+          block: 'center' 
       });
     }
-  }, [currentSentenceIndex, settings.mode, settings.autoScroll, settings.autoScrollAlignment, pagination.sentenceToPageMap, pagination.currentPage, pageTurnBehavior]);
-
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    if (settings.mode !== 'page') return;
-    const container = e.currentTarget;
-    const newCurrentPage = Math.round(container.scrollLeft / container.clientWidth);
-    if (newCurrentPage !== pagination.currentPage) {
-      setPagination(p => ({...p, currentPage: newCurrentPage}));
-    }
-  };
+  }, [currentSentenceIndex, book.fileType, viewMode]);
   
-  const goToPage = useCallback((page: number) => {
-    const container = paginatedContentRef.current;
-    if (!container) return;
-    const newPage = Math.max(0, Math.min(page, pagination.totalPages - 1));
-    container.scrollTo({ left: newPage * container.clientWidth, behavior: pageTurnBehavior });
-  }, [pagination.totalPages, pageTurnBehavior]);
+  // --- EPUB Rendering Logic ---
+  const readerAreaRef = useRef<HTMLDivElement>(null);
+  const renditionRef = useRef<Rendition | null>(null);
+  const isEpubReadingMode = book.fileType === 'epub' && (viewMode === 'reading' || (viewMode === 'hybrid' && book.fileType === 'epub'));
 
+  const epubThemes = useMemo(() => ({
+    light: { body: { background: '#fdf6e3', color: '#586e75', 'line-height': `${settings.lineHeight}` } },
+    dark: { body: { background: '#1f2937', color: '#d1d5db', 'line-height': `${settings.lineHeight}` } },
+    sepia: { body: { background: '#f4e9db', color: '#5b4636', 'line-height': `${settings.lineHeight}` } },
+    grey: { body: { background: '#374151', color: '#e5e7eb', 'line-height': `${settings.lineHeight}` } },
+  }), [settings.lineHeight]);
+
+  // Effect for INITIALIZATION and DESTRUCTION of Epub.js
   useEffect(() => {
-    if (!jumpRequest) return;
-    if (jumpRequest.type === 'page' && settings.mode === 'page') {
-      goToPage(jumpRequest.value);
-    } else if (jumpRequest.type === 'percent' && settings.mode === 'scroll') {
-      const container = readerContentRef.current;
-      if (container) {
-        const clampedValue = Math.max(0, Math.min(100, jumpRequest.value));
-        const targetScroll = container.scrollHeight * (clampedValue / 100);
-        container.scrollTo({ top: targetScroll, behavior: 'smooth' });
-      }
+    if (!isEpubReadingMode || !readerAreaRef.current || !book.epubData) {
+      return;
     }
-  }, [jumpRequest, settings.mode, goToPage]);
+
+    const epubBook = ePub(book.epubData);
+    const rendition = epubBook.renderTo(readerAreaRef.current, {
+      width: "100%",
+      height: "100%",
+    });
+    renditionRef.current = rendition;
+
+    rendition.display(book.chapters?.[currentChapterIndex]?.href);
+
+    return () => {
+      if (renditionRef.current) {
+        renditionRef.current.destroy();
+        renditionRef.current = null;
+      }
+      if (epubBook) {
+        epubBook.destroy();
+      }
+    };
+  }, [book.epubData, isEpubReadingMode]); // Re-run only when the book itself changes
+
+  // Effect to update rendition SETTINGS
+  useEffect(() => {
+    const rendition = renditionRef.current;
+    if (!rendition) return;
+    
+    // Register themes with up-to-date settings
+    Object.entries(epubThemes).forEach(([name, theme]) => {
+        rendition.themes.register(name, theme);
+    });
+
+    rendition.themes.select(settings.theme);
+    rendition.themes.fontSize(`${settings.fontSize}rem`);
+    const fontFamily = settings.fontFamily === 'sans' ? 'sans-serif' : (settings.fontFamily === 'dyslexic' ? 'OpenDyslexic' : 'serif');
+    rendition.themes.font(fontFamily);
+
+    const isPaperSim = viewMode === 'reading' && settings.mode === 'page' && settings.paperSimulation;
+    rendition.flow(settings.mode === 'scroll' && !isPaperSim ? "scrolled-doc" : "paginated");
+    rendition.spread(isPaperSim ? "auto" : "none");
+
+  }, [settings, viewMode, epubThemes]); // Re-run when settings change
+
+  // Effect to navigate rendition to the current chapter
+  useEffect(() => {
+      const rendition = renditionRef.current;
+      const targetHref = book.chapters?.[currentChapterIndex]?.href;
+      if (rendition && targetHref) {
+          const currentLocation = rendition.currentLocation();
+          if (currentLocation?.href !== targetHref) {
+              rendition.display(targetHref);
+          }
+      }
+  }, [currentChapterIndex, book.chapters]);
+
+  const handleNextPage = useCallback(() => renditionRef.current?.next(), []);
+  const handlePrevPage = useCallback(() => renditionRef.current?.prev(), []);
+
+  // --- Main Render Logic ---
 
   const dynamicReaderStyle = {
     fontSize: `${settings.fontSize}rem`,
     lineHeight: settings.lineHeight,
-    '--highlight-bg': settings.highlightColor,
   } as React.CSSProperties;
+
+  const renderTextContent = (isKaraoke = false) => (
+    <>
+      {sentences.map((sentence, index) => {
+        if (!sentence || sentence.trim() === '') return null;
+        const isCurrent = index === currentSentenceIndex;
+        return (
+          <span
+            key={index}
+            ref={isCurrent ? activeSentenceRef : null}
+            onClick={() => onSentenceClick(index)}
+            className={`cursor-pointer transition-colors duration-300 ${isKaraoke ? '' : highlightClasses.get(index) || ''}`}
+            style={isCurrent ? { 
+                backgroundColor: 'var(--reader-highlight-bg)', 
+                color: 'var(--reader-highlight-text)' 
+            } : {}}
+          >
+            {sentence}{' '}
+          </span>
+        );
+      })}
+    </>
+  );
+
+  const renderTextPaperSimulationView = () => (
+    <div className="book-viewport">
+        <div className="book" style={{ fontFamily: `var(--font-family, 'Lora')` }}>
+            <div ref={pageContainerRef} className="book-page book-page--left paper-texture">
+                <div className="book-page--content">{pages[currentPageIndex] || ''}</div>
+                <PaperImperfections pageElement={pageContainerRef.current} />
+            </div>
+            
+            <div className="book-page book-page--right paper-texture">
+                 <div className="book-page--content">{pages[currentPageIndex + 2] || ''}</div>
+                <PaperImperfections pageElement={pageContainerRef.current}/>
+            </div>
+
+            {pages.length > currentPageIndex + 1 && (
+                 <div 
+                    className={`flipper ${isTurning ? 'turning' : ''}`}
+                    onClick={() => { if (!isTurning && currentPageIndex + 2 < pages.length) setIsTurning(true) }}
+                    onTransitionEnd={isTurning ? () => { setCurrentPageIndex(p => p + 2); setIsTurning(false); } : undefined}
+                >
+                    <div className="flipper__face flipper__face--front paper-texture">
+                        <div className="book-page--content">{pages[currentPageIndex + 1]}</div>
+                         <PaperImperfections pageElement={pageContainerRef.current}/>
+                    </div>
+                    <div className="flipper__face flipper__face--back paper-texture">
+                        <div className="book-page--content">{pages[currentPageIndex + 2] || ''}</div>
+                         <PaperImperfections pageElement={pageContainerRef.current}/>
+                    </div>
+                </div>
+            )}
+        </div>
+    </div>
+  );
   
-  const paginatedStyle = settings.mode === 'page' ? {
-    columnWidth: '100%',
-    columnGap: `${settings.margin * 2}rem`,
-    padding: `${settings.margin / 4}rem ${settings.margin}rem`,
-    transition: settings.pageTurnAnimation === 'fade' ? 'opacity 0.3s ease-in-out' : 'none',
-  } : {};
-
-  const renderSentence = (sentence: string, index: number) => {
-    if (!sentence || sentence.trim() === '') return null;
-    const isCurrent = index === currentSentenceIndex;
-    const annotation = annotations.find(a => a.sentenceIndex === index);
-    
-    const annotationStyle: React.CSSProperties = annotation ? {
-        textDecoration: 'underline',
-        textDecorationColor: annotation.color,
-        textDecorationThickness: '2px',
-        textUnderlineOffset: '3px',
-    } : {};
-
+  // Handle EPUB rendering first
+  if (isEpubReadingMode) {
+    const isPaperSim = viewMode === 'reading' && settings.mode === 'page' && settings.paperSimulation;
     return (
-        <span className="relative group">
-            <span
-                ref={isCurrent ? activeSentenceRef as React.RefObject<any> : null}
-                data-sentence-index={index}
-                onClick={() => onSentenceClick(index)}
-                className={`cursor-pointer transition-all duration-300`}
-                style={isCurrent ? { backgroundColor: 'var(--highlight-bg)', color: 'var(--reader-highlight-text)', ...annotationStyle } : annotationStyle}
-            >
-                {sentence}
-                {annotation?.note && <MessageSquareIcon className="w-4 h-4 inline-block ml-1 align-middle text-blue-400" />}
-            </span>
-             <button
-                onClick={(e) => onSentenceAction(index, e.currentTarget)}
-                className="absolute -top-1 -right-1 p-1 bg-gray-700 rounded-full opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
-                aria-label="Annotate sentence"
-            >
-                <PaletteIcon className="w-4 h-4 text-gray-300" />
-            </button>{' '}
-        </span>
+      <div
+        className="reader-view w-full h-full flex flex-col"
+        data-theme={settings.theme}
+        data-font={settings.fontFamily}
+      >
+        {isPaperSim ? (
+          <div className="book-viewport" style={{ fontFamily: `var(--font-family, 'Lora')` }}>
+            <div className="book">
+              <div ref={readerAreaRef} className="w-full h-full" />
+              <div className="absolute left-0 top-0 h-full w-[15%] cursor-pointer z-10" onClick={handlePrevPage} aria-label="Previous page" />
+              <div className="absolute right-0 top-0 h-full w-[15%] cursor-pointer z-10" onClick={handleNextPage} aria-label="Next page" />
+            </div>
+          </div>
+        ) : (
+          <div className="reader-content w-full h-full p-0">
+            <div ref={readerAreaRef} className="w-full h-full" />
+          </div>
+        )}
+      </div>
     );
   }
 
+  // Fallback to text-based rendering for .txt files or karaoke/hybrid modes
+  const isTextPaperSim = book.fileType === 'txt' && viewMode === 'reading' && settings.mode === 'page' && settings.paperSimulation;
+  const readingMode = viewMode === 'reading' ? settings.mode : viewMode;
+
   return (
     <div
-      className="reader-view w-full max-w-4xl flex-grow bg-gray-900/70 backdrop-blur-sm border border-gray-700 rounded-xl shadow-2xl flex flex-col overflow-hidden mb-4 hc-bg hc-border"
+      className="reader-view w-full h-full flex flex-col"
       data-theme={settings.theme}
       data-font={settings.fontFamily}
       style={dynamicReaderStyle}
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
     >
-      <header className="reader-content flex-shrink-0 p-3 border-b border-gray-700 flex justify-between items-center gap-4 hc-bg hc-border z-10">
-        <h2 className="text-lg font-semibold truncate">{chapter.title}</h2>
-        <div className="flex items-center gap-2">
-            {headerInfo}
-            {actions}
+      {isTextPaperSim ? (
+        renderTextPaperSimulationView()
+      ) : (
+        <div 
+          ref={readerContentRef}
+          className="reader-content w-full h-full"
+        >
+          {readingMode === 'karaoke' && (
+             <div className="h-full flex flex-col justify-center items-center text-center p-8">
+               <p className="text-2xl md:text-3xl lg:text-4xl leading-relaxed font-semibold">{renderTextContent(true)}</p>
+             </div>
+          )}
+          {readingMode === 'hybrid' && (
+              <div className="h-full overflow-y-auto p-8 text-justify">
+                  {renderTextContent()}
+              </div>
+          )}
+          {readingMode === 'scroll' && viewMode === 'reading' && (
+              <div className="h-full overflow-y-auto p-8 text-justify">
+                  {renderTextContent()}
+              </div>
+          )}
+          {readingMode === 'page' && viewMode === 'reading' && !settings.paperSimulation && (
+              <div className="h-full p-8 sm:p-12 md:p-16 text-justify" style={{ columnWidth: '25rem', columnGap: '4rem' }}>
+                  {renderTextContent()}
+              </div>
+          )}
         </div>
-      </header>
-      <div 
-        ref={readerContentRef} 
-        className={`reader-content flex-grow ${settings.mode === 'page' ? 'overflow-hidden' : 'overflow-y-auto'}`} 
-        style={settings.mode !== 'page' ? { padding: `${settings.margin / 4}rem ${settings.margin}rem` } : {}}
-      >
-        {(settings.mode === 'scroll' || settings.mode === 'karaoke') && (
-          <div className={`${settings.mode === 'karaoke' ? 'h-full flex flex-col justify-center text-center p-4' : ''}`}>
-             {settings.mode === 'karaoke' && <p className="text-gray-400 opacity-50 mb-4 transition-opacity duration-300 animate-fade-in" style={{ fontSize: `${settings.fontSize * 0.9}rem` }}>{sentences[currentSentenceIndex - 1]}</p>}
-             {sentences.map((sentence, index) => {
-                const isCurrent = index === currentSentenceIndex;
-                const annotation = annotations.find(a => a.sentenceIndex === index);
-                const annotationStyle: React.CSSProperties = annotation ? {
-                    textDecoration: 'underline',
-                    textDecorationColor: annotation.color,
-                    textDecorationThickness: '2px',
-                    textUnderlineOffset: '3px',
-                } : {};
-
-                if (settings.mode === 'karaoke') {
-                    if (!isCurrent) return null;
-                     return (
-                         <p key={index}
-                            ref={activeSentenceRef as React.RefObject<any>}
-                            onClick={() => onSentenceClick(index)}
-                            className={`cursor-pointer font-semibold transition-opacity duration-300 animate-fade-in`}
-                            style={{ backgroundColor: 'var(--highlight-bg)', color: 'var(--reader-highlight-text)', fontSize: `${settings.fontSize * 1.2}rem`, ...annotationStyle }}
-                         >
-                             {sentence}
-                             {annotation?.note && <MessageSquareIcon className="w-5 h-5 inline-block ml-2 align-middle text-blue-300" />}
-                         </p>
-                     )
-                }
-                
-                return (
-                     <span key={index} className="relative group">
-                        <span
-                            ref={isCurrent ? activeSentenceRef as React.RefObject<any> : null}
-                            onClick={() => onSentenceClick(index)}
-                            className={`cursor-pointer transition-all duration-300`}
-                            style={isCurrent ? { backgroundColor: 'var(--highlight-bg)', color: 'var(--reader-highlight-text)', ...annotationStyle } : annotationStyle}
-                        >
-                        {sentence}{' '}
-                        {annotation?.note && <MessageSquareIcon className="w-4 h-4 inline-block align-middle text-blue-400" />}
-                        </span>
-                        <button
-                            onClick={(e) => onSentenceAction(index, e.currentTarget)}
-                            className="absolute -top-1 -right-1 p-1 bg-gray-700 rounded-full opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
-                            aria-label="Annotate sentence"
-                        >
-                            <PaletteIcon className="w-4 h-4 text-gray-300" />
-                        </button>
-                    </span>
-                );
-             })}
-             {settings.mode === 'karaoke' && <p className="text-gray-400 opacity-50 mt-4 transition-opacity duration-300 animate-fade-in" style={{ fontSize: `${settings.fontSize * 0.9}rem` }}>{sentences[currentSentenceIndex + 1]}</p>}
-          </div>
-        )}
-        {settings.mode === 'page' && (
-            <div className='h-full w-full relative'>
-                <div 
-                    ref={paginatedContentRef} 
-                    className="h-full overflow-x-scroll overflow-y-hidden"
-                    onScroll={handleScroll}
-                    style={{ scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}
-                >
-                    <div className="h-full text-justify" style={paginatedStyle}>
-                        {sentences.map(renderSentence)}
-                    </div>
-                </div>
-                {/* Page Navigation */}
-                <button onClick={() => goToPage(pagination.currentPage - 1)} disabled={pagination.currentPage === 0} className={`absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-black/30 rounded-full text-white backdrop-blur-sm hover:bg-black/50 transition-all disabled:opacity-0 ${isHovering ? 'opacity-100' : 'opacity-0'}`}>
-                    <ChevronLeftIcon className="w-6 h-6" />
-                </button>
-                <button onClick={() => goToPage(pagination.currentPage + 1)} disabled={pagination.currentPage >= pagination.totalPages - 1} className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-black/30 rounded-full text-white backdrop-blur-sm hover:bg-black/50 transition-all disabled:opacity-0 ${isHovering ? 'opacity-100' : 'opacity-0'}`}>
-                    <ChevronRightIcon className="w-6 h-6" />
-                </button>
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-sm bg-black/30 text-white px-3 py-1 rounded-full backdrop-blur-sm">
-                    {pagination.totalPages > 0 ? `Page ${pagination.currentPage + 1} of ${pagination.totalPages}` : 'Calculating...'}
-                </div>
-            </div>
-        )}
-      </div>
+      )}
     </div>
   );
 };

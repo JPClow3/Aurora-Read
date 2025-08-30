@@ -1,20 +1,89 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Flashcard, FlashcardReview, FlashcardReviewEase } from '../types';
 
-import React, { useState, useEffect } from 'react';
-import { Flashcard } from '../types';
+interface FlashcardViewerProps {
+    cards: Flashcard[];
+    reviews: Record<string, FlashcardReview>;
+    onUpdateReviews: (newReviews: Record<string, FlashcardReview>) => void;
+    onClose: () => void;
+}
 
-const FlashcardViewer: React.FC<{ cards: Flashcard[] }> = ({ cards }) => {
+const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ cards, reviews, onUpdateReviews, onClose }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
+    const [sessionEnded, setSessionEnded] = useState(false);
+    const [sessionReviews, setSessionReviews] = useState<Record<string, FlashcardReviewEase>>({});
+
+    const cardsToReview = useMemo(() => {
+        const now = Date.now();
+        return cards.filter(card => {
+            const review = reviews[card.id];
+            return !review || review.nextReviewDate <= now;
+        });
+    }, [cards, reviews]);
 
     useEffect(() => {
         setIsFlipped(false);
-    }, [currentIndex]);
+        if (currentIndex >= cardsToReview.length && cardsToReview.length > 0) {
+            setSessionEnded(true);
+        }
+    }, [currentIndex, cardsToReview.length]);
 
-    if (!cards || cards.length === 0) {
-        return <p className="text-center text-gray-400">No flashcards were generated for this chapter.</p>;
+    if (cardsToReview.length === 0) {
+        return (
+            <div className="text-center text-gray-400 flex flex-col items-center gap-4">
+                <p>No flashcards due for review right now.</p>
+                <button onClick={onClose} className="px-4 py-2 bg-indigo-600 rounded-lg">Done</button>
+            </div>
+        );
     }
 
-    const card = cards[currentIndex];
+    const card = cardsToReview[currentIndex];
+
+    const handleNextCard = (ease: FlashcardReviewEase) => {
+        setSessionReviews(prev => ({ ...prev, [card.id]: ease }));
+        setCurrentIndex(i => i + 1);
+    };
+
+    const handleFinishSession = () => {
+        const now = Date.now();
+        const updatedReviews = { ...reviews };
+
+        for (const cardId in sessionReviews) {
+            const ease = sessionReviews[cardId];
+            const oldReview = reviews[cardId];
+            let newInterval = oldReview?.interval || 1;
+
+            if (ease === 'easy') {
+                newInterval = Math.ceil(newInterval * 2.5);
+            } else if (ease === 'medium') {
+                newInterval = Math.ceil(newInterval * 1.5);
+            } else { // hard
+                newInterval = 1;
+            }
+
+            updatedReviews[cardId] = {
+                ease,
+                interval: newInterval,
+                nextReviewDate: now + newInterval * 24 * 60 * 60 * 1000,
+            };
+        }
+        onUpdateReviews(updatedReviews);
+        onClose();
+    };
+
+    if (sessionEnded) {
+        return (
+            <div className="text-center flex flex-col items-center gap-4">
+                <h3 className="text-xl font-semibold">Session Complete!</h3>
+                <p className="text-gray-400">You've reviewed all due cards for this chapter.</p>
+                <button onClick={handleFinishSession} className="px-6 py-2 bg-indigo-600 rounded-lg text-lg">
+                    Save & Finish
+                </button>
+            </div>
+        );
+    }
+
 
     return (
         <div className="flex flex-col items-center gap-4">
@@ -31,23 +100,18 @@ const FlashcardViewer: React.FC<{ cards: Flashcard[] }> = ({ cards }) => {
                     </div>
                 </div>
             </div>
-            <div className="flex items-center justify-between w-full">
-                <button
-                    onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
-                    disabled={currentIndex === 0}
-                    className="px-4 py-2 bg-gray-600 rounded-lg disabled:opacity-50 transition-colors active:scale-95"
-                >
-                    Prev
-                </button>
-                <p className="text-gray-400">{currentIndex + 1} / {cards.length}</p>
-                <button
-                    onClick={() => setCurrentIndex(i => Math.min(cards.length - 1, i + 1))}
-                    disabled={currentIndex === cards.length - 1}
-                    className="px-4 py-2 bg-gray-600 rounded-lg disabled:opacity-50 transition-colors active:scale-95"
-                >
-                    Next
-                </button>
-            </div>
+
+            {isFlipped ? (
+                 <div className="flex items-center justify-center w-full gap-3">
+                    <button onClick={() => handleNextCard('hard')} className="px-4 py-2 bg-red-800/80 rounded-lg transition-colors active:scale-95 w-24">Hard</button>
+                    <button onClick={() => handleNextCard('medium')} className="px-4 py-2 bg-yellow-700/80 rounded-lg transition-colors active:scale-95 w-24">Medium</button>
+                    <button onClick={() => handleNextCard('easy')} className="px-4 py-2 bg-green-800/80 rounded-lg transition-colors active:scale-95 w-24">Easy</button>
+                </div>
+            ) : (
+                <div className="flex items-center justify-center w-full min-h-[40px]">
+                     <p className="text-gray-400">{currentIndex + 1} / {cardsToReview.length}</p>
+                </div>
+            )}
         </div>
     );
 };
